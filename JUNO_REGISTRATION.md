@@ -197,6 +197,32 @@ left untouched (confirmed by reading the file: only `tjp-batch`'s internals
 reference it, so it's dead weight for a pipeline that doesn't do per-row/
 per-sheet batching).
 
+## 6a. Three gaps this checklist originally missed (found 2026-08-30 by a second
+Claude session doing the actual hpc-side registration, by reading the live
+files rather than trusting this doc alone — none of these are lookup-table
+entries like §4/§5 above, they're per-pipeline-name **dispatch switches**
+scattered across separate files, so they don't show up if you only grep for
+where `dconvatac` appears in `common.sh`/`validate.sh`. Fold this check into
+the process for the *next* new pipeline too — search the whole `bin/` tree
+for the precedent pipeline's name, not just the two registry files:
+
+1. **`bin/tjp-launch`'s pipeline-dispatch switch** (~line 351) — no case for
+   the new pipeline means `SBATCH_CONFIG_ARG` stays empty and the job
+   submits successfully, then fails immediately inside SLURM on the usage
+   check. Add a case following dconvatac's pattern (writes directly to
+   `output_dir`, no scratch staging, since dpnvisium isn't Nextflow-based).
+2. **`bin/lib/manifest.sh`'s `snapshot_pipeline_source()`** — no case means
+   `pipeline_source.tar.gz`/`pipeline_submodule_commit` never get captured
+   for provenance.
+3. **`bin/lib/provenance.sh`'s `capture_software_versions()` dispatch** — no
+   case means `software_versions.txt` silently says "not captured" instead
+   of recording the actual cell2location/scvi-tools/torch/etc. versions used.
+   Needs its own probe block (Python, cell2location, scvi-tools, scanpy,
+   anndata, torch, numpy, pandas, PyYAML).
+
+All three are fixed in the live `hpc` checkout as of 2026-08-30 (uncommitted,
+pending user review).
+
 ## 7. New file: `DPNVISIUM_HPC_GUIDE.md` (place at repo root, alongside `DCONVATAC_HPC_GUIDE.md`)
 
 ```markdown
