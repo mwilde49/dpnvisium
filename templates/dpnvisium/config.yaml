@@ -1,0 +1,43 @@
+# dpnvisium pipeline config template
+# Paths use __SCRATCH__/__WORK__ placeholders resolved by tjp-setup, matching
+# other Hyperion Compute pipeline templates (see templates/dconvatac/config.yaml).
+
+input_sn_counts: __SCRATCH__/input_sn/ref20k_counts.csv
+input_sn_meta: __SCRATCH__/input_sn/ref20k_meta.csv
+input_visium_dir: __SCRATCH__/input_visium/
+output_dir: __SCRATCH__/output/
+
+sample_subset: null  # null = process every sample dir under input_visium_dir
+
+gene_filter:
+  cell_count_cutoff: 5
+  cell_percentage_cutoff2: 0.03
+  nonz_mean_cutoff: 1.12
+
+ref_batch_key: Box_ID
+ref_labels_key: type
+ref_categorical_covariate_keys: [Batch]
+type_relabel: {ATF3: Inj.ATF3, SMC: SmMusc}  # avoid cell-type-vs-gene-symbol name collisions downstream
+max_epochs_ref: 250
+ref_export_num_samples: 1000
+ref_export_batch_size: 2500
+
+N_cells_per_location: 15   # tissue-density hyperprior -- see ishdpn/c2l_TEMPLATE.ipynb cell 16 for rationale
+detection_alpha: 20        # human Visium (high within-slide RNA-detection variation) -- use 200 for mouse
+max_epochs_spatial: 5000
+spatial_batch_size: null   # null = full-batch (production, requires H100-class VRAM); set an int (e.g. 2048) to bound memory
+spatial_train_size: 1
+spatial_export_num_samples: 1000
+spatial_export_batch_size: 5000
+
+run_nmf_colocation: true
+nmf_n_fact_min: 3
+nmf_n_fact_max: 10
+nmf_n_restarts: 3
+
+compute_expected_per_cell_type: true  # needed for downstream NCEM analysis
+
+samples_to_plot: null  # null = generate a per-slide deconvolution PDF for every sample
+
+force_ref: false       # set true to retrain the reference signature even if reference_signatures/sc.h5ad exists
+force_spatial: false   # set true to retrain the spatial model even if cell2location_map/sp.h5ad exists

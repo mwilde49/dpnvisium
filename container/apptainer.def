@@ -1,0 +1,40 @@
+Bootstrap: docker
+From: python:3.11-slim
+
+%labels
+    Version         1.0.0
+    Description     dpnvisium — Cell2Location Visium spatial deconvolution pipeline (ish_dpn project)
+    Maintainer      mwilde49
+
+%post
+    apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        git \
+        pkg-config \
+        libhdf5-dev \
+        libopenblas-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+    pip install --no-cache-dir --upgrade pip
+
+    # cell2location[tutorials] pulls in scvi-tools + a CUDA-enabled torch build
+    # transitively via PyPI's default Linux wheels (no separate index-url
+    # needed — modern torch wheels bundle CUDA support by default on Linux).
+    # No explicit torch/CUDA version pin here on purpose: Juno's H100 (Hopper)
+    # and A30 (Ampere) are both long-stable architectures, so whatever recent
+    # torch pip resolves at build time will work. (Contrast with local dev on
+    # a Blackwell/RTX 50-series laptop GPU, which needed a specific very-recent
+    # torch+cu13x build to get working CUDA kernels — that constraint does not
+    # apply to Juno's GPUs.)
+    pip install --no-cache-dir cell2location[tutorials] pyyaml
+
+    pip cache purge
+
+%environment
+    export PYTHONNOUSERSITE=1
+    export MPLBACKEND=Agg
+    # Suppress TensorFlow / PyTorch noise unrelated to training
+    export TF_CPP_MIN_LOG_LEVEL=3
+
+%runscript
+    exec python "$@"

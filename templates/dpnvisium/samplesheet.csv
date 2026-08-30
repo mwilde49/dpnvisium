@@ -1,0 +1,14 @@
+# dpnvisium is a "per-sheet" pipeline in the tjp-batch sense (like bulkrnaseq/
+# psoma/virome), but unlike those it does not actually read a samplesheet at
+# all: dpnvisium.py auto-discovers every sample directory under
+# input_visium_dir (or the config's sample_subset list) and processes them
+# together in one job. This file exists mainly for registry-convention
+# parity (bin/lib/samplesheet.sh expects every pipeline to have a samplesheet
+# template) -- the real primary launch path is `tjp-launch dpnvisium[-gpu]`
+# with a single config.yaml, not `tjp-batch`. See JUNO_REGISTRATION.md.
+#
+# If per-cohort batch launches are ever needed (e.g. running separate ish_dpn
+# sub-cohorts as separate jobs), one row per cohort works: point sample_subset
+# at a different comma-separated sample list per row.
+sample,input_visium_dir,sample_subset
+ish_dpn_full_cohort,/scratch/juno/__USER__/dpnvisium/input_visium/,

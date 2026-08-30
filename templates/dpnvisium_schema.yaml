@@ -1,0 +1,29 @@
+# Schema for dpnvisium config validation
+# Used by bin/lib/validate.sh _validate_dpnvisium()
+# Deploy target on Juno: templates/schemas/dpnvisium.yaml
+required:
+  - input_sn_counts
+  - input_sn_meta
+  - input_visium_dir
+  - output_dir
+path_exists:
+  - input_sn_counts
+  - input_sn_meta
+  - input_visium_dir
+boolean:
+  - run_nmf_colocation
+  - compute_expected_per_cell_type
+  - force_ref
+  - force_spatial
+numeric:
+  - N_cells_per_location
+  - detection_alpha
+  - max_epochs_ref
+  - ref_export_num_samples
+  - ref_export_batch_size
+  - max_epochs_spatial
+  - spatial_train_size
+  - spatial_export_num_samples
+  - spatial_export_batch_size
+# spatial_batch_size is deliberately NOT in the numeric list: null/blank is a
+# valid production value (full-batch training), not just a missing field.
