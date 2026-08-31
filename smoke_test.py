@@ -64,6 +64,7 @@ def main():
         adata=adata_ref, batch_key="sample", labels_key="HighName", categorical_covariate_keys=["Batch"]
     )
     mod = RegressionModel(adata_ref)
+    mod.view_anndata_setup()  # exercises rich.pretty -- caught a real scvi-tools/Python-version bug here once
     mod.train(max_epochs=5)
     adata_ref = mod.export_posterior(adata_ref, sample_kwargs={"num_samples": 20, "batch_size": 50})
     log("RegressionModel smoke test OK")
@@ -83,6 +84,7 @@ def main():
     mod2 = cell2location.models.Cell2location(
         adata_vis, cell_state_df=inf_aver, N_cells_per_location=15, detection_alpha=20
     )
+    mod2.view_anndata_setup()
     mod2.train(max_epochs=5, batch_size=None, train_size=1)
     adata_vis = mod2.export_posterior(adata_vis, sample_kwargs={"num_samples": 20, "batch_size": 50})
     log("Cell2location smoke test OK")
