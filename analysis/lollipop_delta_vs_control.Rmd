@@ -1,0 +1,249 @@
+---
+title: "Change in Mean Cell-Type Proportion vs. Control"
+subtitle: "dpnvisium reproduction of the Science-submission lollipop chart, on new production deconvolution data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(ggplot2)
+library(tibble)
+library(grid)  # for unit()
+```
+
+## What this reproduces
+
+This regenerates the lollipop chart from `MLC plots--ISH_DPN.Rmd` /
+`MLC plots--NO_NGN_FINAL.Rmd` (in `ishdpn/MLC.zip`) — "Change in Mean
+Cell-Type Proportion vs. Non-DPN Neuronal Barcodes" — a chart previously
+presented in a Science submission — using our new production
+`dpnvisium` deconvolution output instead of the legacy run.
+
+The statistical method and plotting code below are ported **essentially
+verbatim** from the original (same spot-pooled mean/95% CI, same delta
+formula, same colors/theme/dimensions), per explicit instruction: this
+needs to be a faithful follow-up figure, not a redesign. Only the data
+loading changed, because our pipeline produces CSVs rather than a single
+Seurat object with proportions already embedded in `meta.data`.
+
+Two variants are rendered, both from the same underlying code path:
+
+- **WITH_NGN** — matches `delta_means_vs_control--GEO_W_NGN--LOOKS_GREAT.png` (3 groups: NGN, NGN Adjacent, Non-NGN Adjacent)
+- **NO_NGN** — matches `delta_means_vs_control--NO_NGN.png` (2 groups: NGN Adjacent, Non-NGN Adjacent)
+
+## Known limitation, reproduced faithfully (not fixed)
+
+The original pools individual Visium spots as independent replicates
+within each `DPN.type` group (thousands of spots, but really clustered
+within a handful of samples per group) for the mean/SEM/95% CI. This is
+a real pseudoreplication concern (flagged in the production-run audit),
+and the delta's confidence interval does not propagate the control
+group's own uncertainty. Reproduced as-is here for direct comparability
+with the original figure — a sample-level-aggregated version can be
+built as a follow-up if wanted.
+
+## 1. Load data
+
+```{r load-data}
+# New production deconvolution output (this session's run)
+abundance_path <- "/home/mwild/dpnvisium_dev/production_run_output/cell2location_q05_cell_abundance_w_sf.csv"
+# Legacy per-spot NGN/neuron classification, extracted once from Khadijah's
+# vis_barcodes 1.rds via extract_legacy_classification.R (see that script)
+classification_path <- "data/legacy_dpn_classification.csv"
+
+abundance_raw <- read_csv(abundance_path, show_col_types = FALSE)
+classification <- read_csv(classification_path, show_col_types = FALSE)
+
+cat("Abundance rows (spots):", nrow(abundance_raw), "\n")
+cat("Classification rows (spots):", nrow(classification), "\n")
+```
+
+## 2. Harmonize spot IDs and cell-type names, join
+
+Our spot IDs are `{sample}_{barcode}` (from `dpnvisium.py`'s
+`read_and_qc`); the legacy classification has `sample` and `barcode`
+as separate columns — split ours to match. Our abundance columns are
+prefixed (`q05cell_abundance_w_sf_...`) and have `/` sanitized to `_`
+(a fix made earlier this session for HDF5 compatibility); the legacy
+object used the original unsanitized names. Reversing that sanitization
+(`_` back to `/` for the 7 affected names) would be ambiguous, since
+`_` also appears in genuinely non-slash names (e.g. `Schwann_1`) — so
+harmonize the other direction instead: sanitize the legacy names the
+same way ours already are.
+
+```{r harmonize-join}
+spot_ids <- abundance_raw[[1]]
+sample_id <- sub("_.*$", "", spot_ids)
+barcode <- sub("^[^_]+_", "", spot_ids)
+
+abundance <- abundance_raw %>%
+  rename(spot_id = 1) %>%
+  mutate(sample = sample_id, barcode = barcode) %>%
+  rename_with(~ sub("^q05cell_abundance_w_sf_", "", .x), starts_with("q05cell_abundance_w_sf_"))
+
+# harmonize legacy cell-type-name columns the same way dpnvisium.py sanitizes: '/' -> '_'
+classification <- classification %>%
+  mutate(DPN.type = `DPN.type`)  # keep as-is; DPN.type values have no slashes
+
+joined <- abundance %>%
+  inner_join(classification, by = c("sample", "barcode"))
+
+join_rate <- nrow(joined) / nrow(abundance) * 100
+cat(sprintf("Joined %d / %d spots (%.1f%%) to a legacy classification\n",
+            nrow(joined), nrow(abundance), join_rate))
+print(table(joined$DPN.type, useNA = "always"))
+```
+
+## 3. Cell-type groups (fiber class), exact from the original
+
+```{r subtype-groups}
+yellow_subtypes <- c(
+  "A-LTMR.TAC3", "A-Propr.EPHA3", "A-Propr.HAPLN4", "A-Propr.PCDH8",
+  "Ab-LTMR.CCKAR", "Ab-LTMR.ETV1", "Ab-LTMR.LGI2", "Ab-LTMR.NSG2"
+)
+cyan_subtypes <- c("A-PEP.SCGN_ADRA2C", "A-PEP.CHRNA7_SLC18A3", "A-PEP.KIT", "A-PEP.NTRK3_S100A16")
+green_subtypes <- c("C-LTMR.CDH9", "C-NP.SST", "C-NP.MRGPRX1_GFRA2", "C-NP.MRGPRX1_MRGPRX4")
+magenta_subtypes <- c("C-PEP.ADORA2B", "C-PEP.TAC1_CACNG5", "C-PEP.TAC1_CHRNA3", "C-Thermo.RXFP1", "C-Thermo.TRPM8")
+
+all_nocis <- c(cyan_subtypes, yellow_subtypes, green_subtypes, magenta_subtypes)
+stopifnot(all(all_nocis %in% colnames(joined)))
+
+group_df_base <- tibble(
+  CellType = c(yellow_subtypes, cyan_subtypes, green_subtypes, magenta_subtypes),
+  Group = c(
+    rep("A-LTMRs", length(yellow_subtypes)),
+    rep("A-NOCs", length(cyan_subtypes)),
+    rep("C-NPs", length(green_subtypes)),
+    rep("C-PEPs", length(magenta_subtypes))
+  )
+) %>%
+  mutate(CellType = factor(CellType, levels = all_nocis)) %>%
+  arrange(CellType) %>%
+  mutate(y = row_number())
+```
+
+## 4. Statistic: spot-pooled mean, 95% CI, delta vs. control
+
+```{r statistic}
+keep_types <- c("No_Neu.Sing", "DPN_NGN", "DPN_Neu.Sing", "DPN_Neu.Sing.NearNGN")
+
+md <- joined %>% filter(DPN.type %in% keep_types)
+
+md_long <- md %>%
+  pivot_longer(cols = all_of(all_nocis), names_to = "CellType", values_to = "Proportion")
+
+md_summary <- md_long %>%
+  group_by(DPN.type, CellType) %>%
+  summarize(
+    mean = mean(Proportion, na.rm = TRUE),
+    sd = sd(Proportion, na.rm = TRUE),
+    n = n(),
+    se = sd / sqrt(n),
+    lower = mean - 1.96 * se,
+    upper = mean + 1.96 * se,
+    .groups = "drop"
+  )
+
+baseline <- md_summary %>%
+  filter(DPN.type == "No_Neu.Sing") %>%
+  select(CellType, baseline_mean = mean)
+
+delta_df_full <- md_summary %>%
+  left_join(baseline, by = "CellType") %>%
+  filter(DPN.type != "No_Neu.Sing") %>%
+  mutate(
+    delta = mean / baseline_mean,
+    delta_lower = lower / baseline_mean,
+    delta_upper = upper / baseline_mean,
+    CellType = factor(CellType, levels = all_nocis)
+  )
+```
+
+## 5. Plot function (verbatim port of `p_delta`, parameterized on NGN inclusion)
+
+```{r plot-function}
+make_lollipop <- function(delta_df, group_df, include_ngn = TRUE) {
+  if (include_ngn) {
+    plot_df <- delta_df
+    color_values <- c("DPN_Neu.Sing" = "#228B22", "DPN_Neu.Sing.NearNGN" = "#007FFF", "DPN_NGN" = "#8849A6")
+    color_labels <- c("DPN_Neu.Sing.NearNGN" = "NGN Adjacent", "DPN_Neu.Sing" = "Non-NGN Adjacent", "DPN_NGN" = "NGN")
+    color_limits <- c("DPN_Neu.Sing.NearNGN", "DPN_Neu.Sing", "DPN_NGN")
+  } else {
+    plot_df <- delta_df %>% filter(DPN.type != "DPN_NGN")
+    color_values <- c("DPN_Neu.Sing" = "#228B22", "DPN_Neu.Sing.NearNGN" = "#007FFF")
+    color_labels <- c("DPN_Neu.Sing.NearNGN" = "NGN Adjacent", "DPN_Neu.Sing" = "Non-NGN Adjacent")
+    color_limits <- c("DPN_Neu.Sing.NearNGN", "DPN_Neu.Sing")
+  }
+
+  p <- ggplot(plot_df, aes(x = delta, y = CellType, color = DPN.type)) +
+    geom_vline(xintercept = 1, linetype = "dashed", linewidth = 0.4) +
+    geom_point(size = 2) +
+    geom_errorbarh(aes(xmin = delta_lower, xmax = delta_upper), height = 0.25) +
+    scale_color_manual(values = color_values, labels = color_labels, limits = color_limits) +
+    labs(
+      title = "            Change in Mean Cell-Type Proportion",
+      x = "Fold-Change in Mean Proportion \nvs. Non-DPN Neuronal Barcodes",
+      y = "Cell Type",
+      color = "Neuon Type"
+    ) +
+    # NOTE: the original never applies scale_fill_manual to this chart (the
+    # `group_colors` palette it defines elsewhere is only used on the ridge
+    # plot) -- these bands use ggplot2's default discrete fill palette.
+    # Reproduced as-is, not "fixed", for exact visual parity.
+    geom_rect(
+      data = group_df,
+      aes(xmin = -Inf, xmax = Inf, ymin = y - .5, ymax = y + .5, fill = Group),
+      alpha = 0.25,
+      inherit.aes = FALSE
+    ) +
+    theme_minimal(base_size = 14) +
+    theme(
+      legend.position = "bottom",
+      legend.justification = "left",
+      legend.box.just = "left",
+      legend.direction = "horizontal",
+      legend.key.height = unit(0.6, "cm"),
+      legend.key.width  = unit(1.2, "cm"),
+      legend.box = "vertical",
+      legend.title = element_text(size = 10, hjust = 0),
+      legend.text  = element_text(size = 9, hjust = 0),
+      plot.title = element_text(face = "bold", size = 15, hjust = 1.25),
+      axis.title.x = element_text(size = 12, hjust = .2),
+      axis.title.y = element_text(size = 12),
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.text.y = element_text(size = 10)
+    ) +
+    guides(color = guide_legend(order = 1, nrow = 1), fill = guide_legend(order = 2, nrow = 1))
+
+  p <- p + theme(
+    legend.position = c(0.02, -0.05),
+    legend.direction = "horizontal",
+    legend.box.just = "left",
+    legend.justification = c(.45, 1.25),
+    plot.margin = unit(c(1, 1, 3, 1), "cm"),
+    legend.key.height = unit(0.6, "cm"),
+    legend.key.width  = unit(1.2, "cm")
+  )
+  p
+}
+```
+
+## 6. Render and save both variants
+
+```{r render-with-ngn, fig.width=5.5, fig.height=9}
+p_with_ngn <- make_lollipop(delta_df_full, group_df_base, include_ngn = TRUE)
+ggsave("delta_means_vs_control--WITH_NGN--dpnvisium.pdf", p_with_ngn, width = 5.5, height = 9, dpi = 300)
+ggsave("delta_means_vs_control--WITH_NGN--dpnvisium.png", p_with_ngn, width = 5.5, height = 9, dpi = 300)
+p_with_ngn
+```
+
+```{r render-no-ngn, fig.width=5.5, fig.height=9}
+p_no_ngn <- make_lollipop(delta_df_full, group_df_base, include_ngn = FALSE)
+ggsave("delta_means_vs_control--NO_NGN--dpnvisium.pdf", p_no_ngn, width = 5.5, height = 9, dpi = 300)
+ggsave("delta_means_vs_control--NO_NGN--dpnvisium.png", p_no_ngn, width = 5.5, height = 9, dpi = 300)
+p_no_ngn
+```
