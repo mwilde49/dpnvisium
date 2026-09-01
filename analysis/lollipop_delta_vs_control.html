@@ -466,10 +466,20 @@ cyan_subtypes &lt;- c(&quot;A-PEP.SCGN_ADRA2C&quot;, &quot;A-PEP.CHRNA7_SLC18A3&
 green_subtypes &lt;- c(&quot;C-LTMR.CDH9&quot;, &quot;C-NP.SST&quot;, &quot;C-NP.MRGPRX1_GFRA2&quot;, &quot;C-NP.MRGPRX1_MRGPRX4&quot;)
 magenta_subtypes &lt;- c(&quot;C-PEP.ADORA2B&quot;, &quot;C-PEP.TAC1_CACNG5&quot;, &quot;C-PEP.TAC1_CHRNA3&quot;, &quot;C-Thermo.RXFP1&quot;, &quot;C-Thermo.TRPM8&quot;)
 
-all_nocis &lt;- c(cyan_subtypes, yellow_subtypes, green_subtypes, magenta_subtypes)
-stopifnot(all(all_nocis %in% colnames(joined)))
+all_nocis_expected &lt;- c(cyan_subtypes, yellow_subtypes, green_subtypes, magenta_subtypes)
+missing_types &lt;- setdiff(all_nocis_expected, colnames(joined))
+all_nocis &lt;- intersect(all_nocis_expected, colnames(joined))
 
-group_df_base &lt;- tibble(
+if (length(missing_types) &gt; 0) {
+  cat(sprintf(
+    &quot;NOTE: %d of %d expected cell types are absent from this reference and will not appear below: %s\n&quot;,
+    length(missing_types), length(all_nocis_expected), paste(missing_types, collapse = &quot;, &quot;)
+  ))
+} else {
+  cat(&quot;All expected cell types present.\n&quot;)
+}</code></pre>
+<pre><code>## All expected cell types present.</code></pre>
+<pre class="r"><code>group_df_base &lt;- tibble(
   CellType = c(yellow_subtypes, cyan_subtypes, green_subtypes, magenta_subtypes),
   Group = c(
     rep(&quot;A-LTMRs&quot;, length(yellow_subtypes)),
@@ -478,6 +488,7 @@ group_df_base &lt;- tibble(
     rep(&quot;C-PEPs&quot;, length(magenta_subtypes))
   )
 ) %&gt;%
+  filter(CellType %in% all_nocis) %&gt;%
   mutate(CellType = factor(CellType, levels = all_nocis)) %&gt;%
   arrange(CellType) %&gt;%
   mutate(y = row_number())</code></pre>

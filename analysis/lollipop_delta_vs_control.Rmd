@@ -108,8 +108,18 @@ cyan_subtypes <- c("A-PEP.SCGN_ADRA2C", "A-PEP.CHRNA7_SLC18A3", "A-PEP.KIT", "A-
 green_subtypes <- c("C-LTMR.CDH9", "C-NP.SST", "C-NP.MRGPRX1_GFRA2", "C-NP.MRGPRX1_MRGPRX4")
 magenta_subtypes <- c("C-PEP.ADORA2B", "C-PEP.TAC1_CACNG5", "C-PEP.TAC1_CHRNA3", "C-Thermo.RXFP1", "C-Thermo.TRPM8")
 
-all_nocis <- c(cyan_subtypes, yellow_subtypes, green_subtypes, magenta_subtypes)
-stopifnot(all(all_nocis %in% colnames(joined)))
+all_nocis_expected <- c(cyan_subtypes, yellow_subtypes, green_subtypes, magenta_subtypes)
+missing_types <- setdiff(all_nocis_expected, colnames(joined))
+all_nocis <- intersect(all_nocis_expected, colnames(joined))
+
+if (length(missing_types) > 0) {
+  cat(sprintf(
+    "NOTE: %d of %d expected cell types are absent from this reference and will not appear below: %s\n",
+    length(missing_types), length(all_nocis_expected), paste(missing_types, collapse = ", ")
+  ))
+} else {
+  cat("All expected cell types present.\n")
+}
 
 group_df_base <- tibble(
   CellType = c(yellow_subtypes, cyan_subtypes, green_subtypes, magenta_subtypes),
@@ -120,6 +130,7 @@ group_df_base <- tibble(
     rep("C-PEPs", length(magenta_subtypes))
   )
 ) %>%
+  filter(CellType %in% all_nocis) %>%
   mutate(CellType = factor(CellType, levels = all_nocis)) %>%
   arrange(CellType) %>%
   mutate(y = row_number())

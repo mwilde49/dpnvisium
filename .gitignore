@@ -10,3 +10,7 @@ __pycache__/
 # R Markdown intermediate/knit files (rendered outputs kept, not intermediates)
 analysis/*.knit.md
 analysis/*_files/
+
+# Large raw reference data -- never commit
+adjusted_obj-selected.zip
+analysis/data/ref30k*
